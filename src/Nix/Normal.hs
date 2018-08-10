@@ -17,6 +17,8 @@ import           Control.Monad.Free
 import qualified Data.HashMap.Lazy as M
 import           Data.Text (Text)
 import qualified Data.Text as Text
+import           Data.Set (Set)
+import qualified Data.Set as Set
 import           Nix.Atoms
 import           Nix.Effects
 import           Nix.Frames
@@ -33,25 +35,25 @@ instance Typeable m => Exception (NormalLoop m)
 normalFormBy
     :: forall e m. (Framed e m, MonadVar m, Typeable m)
     => (forall r. NThunk m -> (NValue m -> m r) -> m r)
-    -> Int
+    -> Set (NValue m)
     -> NValue m
     -> m (NValueNF m)
-normalFormBy k n v = do
+normalFormBy k vs v = do
     -- doc <- prettyNValue v
     -- traceM $ show n ++ ": normalFormBy: " ++ show doc
-    if n > 2000
+    if Set.member v vs
     then return $ Pure v
-    else case v of
+    else let vs' = Set.insert v vs in case v of
         NVConstant a     -> return $ Free $ NVConstantF a
         NVStr t s        -> return $ Free $ NVStrF t s
         NVList l         ->
             fmap (Free . NVListF) $ forM (zip [0..] l) $ \(i :: Int, t) -> do
-                traceM $ show n ++ ": normalFormBy: List[" ++ show i ++ "]"
-                t `k` normalFormBy k (succ n)
+                traceM $ "normalFormBy: List[" ++ show i ++ "]"
+                t `k` normalFormBy k vs'
         NVSet s p        ->
             fmap (Free . flip NVSetF p) $ sequence $ flip M.mapWithKey s $ \ky t -> do
-                traceM $ show n ++ ": normalFormBy: Set{" ++ show ky ++ "}"
-                t `k` normalFormBy k (succ n)
+                traceM $ "normalFormBy: Set{" ++ show ky ++ "}"
+                t `k` normalFormBy k vs'
         NVClosure p f    -> return $ Free $ NVClosureF p f
         NVPath fp        -> return $ Free $ NVPathF fp
         NVBuiltin name f -> return $ Free $ NVBuiltinF name f
@@ -60,7 +62,7 @@ normalFormBy k n v = do
 normalForm :: (Framed e m, MonadVar m, Typeable m,
               MonadThunk (NValue m) (NThunk m) m)
            => NValue m -> m (NValueNF m)
-normalForm = normalFormBy force 0
+normalForm = normalFormBy force Set.empty
 
 embed :: forall m. (MonadThunk (NValue m) (NThunk m) m)
       => NValueNF m -> m (NValue m)

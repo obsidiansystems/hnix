@@ -27,6 +27,7 @@ import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.ListM (sortByM)
 import           Control.Monad.Reader (asks)
+import qualified Data.Set as Set
 
 -- Using package imports here because there is a bug in cabal2nix that forces
 -- us to put the hashing package in the unconditional dependency list.
@@ -378,9 +379,9 @@ div_ x y = x >>= \x' -> y >>= \y' -> case (x', y') of
         toNix (floor (fromInteger x / fromInteger y :: Double) :: Integer)
     (NVConstant (NFloat x), NVConstant (NInt y))   | y /= 0 ->
         toNix (x / fromInteger y)
-    (NVConstant (NInt x),   NVConstant (NFloat y)) | y /= 0 -> 
+    (NVConstant (NInt x),   NVConstant (NFloat y)) | y /= 0 ->
         toNix (fromInteger x / y)
-    (NVConstant (NFloat x), NVConstant (NFloat y)) | y /= 0 -> 
+    (NVConstant (NFloat x), NVConstant (NFloat y)) | y /= 0 ->
         toNix (x / y)
     (_, _) ->
         throwError $ Division x' y'
@@ -600,7 +601,7 @@ seq_ a b = a >> b
 deepSeq :: MonadNix e m => m (NValue m) -> m (NValue m) -> m (NValue m)
 deepSeq a b = do
     -- We evaluate 'a' only for its effects, so data cycles are ignored.
-    _ <- normalFormBy (forceEffects . coerce . _baseThunk) 0 =<< a
+    _ <- normalFormBy (forceEffects . coerce . _baseThunk) Set.empty =<< a
 
     -- Then we evaluate the other argument to deepseq, thus this function
     -- should always produce a result (unlike applying 'deepseq' on infinitely
