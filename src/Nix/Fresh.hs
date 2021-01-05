@@ -50,18 +50,10 @@ instance MonadTrans (FreshIdT i) where
 instance MonadBase b m => MonadBase b (FreshIdT i m) where
   liftBase = FreshIdT . liftBase
 
-instance ( MonadVar m
-         , Eq i
-         , Ord i
-         , Show i
-         , Enum i
-         , Typeable i
-         )
-         => MonadThunkId (FreshIdT i m) where
-  type ThunkId (FreshIdT i m) = i
-  freshId = FreshIdT $ do
-    v <- ask
-    atomicModifyVar v (\i -> (succ i, i))
+freshId :: (Monad m, MonadAtomicRef m, Enum i) => FreshIdT i m i
+freshId = FreshIdT $ do
+  v <- ask
+  atomicModifyVar v (\i -> (succ i, i))
 
 runFreshIdT :: Functor m => Var m i -> FreshIdT i m a -> m a
 runFreshIdT i m = runReaderT (unFreshIdT m) i

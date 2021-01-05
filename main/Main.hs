@@ -26,7 +26,7 @@ import qualified Data.Text.IO                  as Text
 import           Nix
 import           Nix.Convert
 import qualified Nix.Eval                      as Eval
-import           Nix.Fresh.Basic
+import           Nix.Fresh.Stable
 import           Nix.Json
 import           Nix.Options.Parser
 import           Nix.Standard
@@ -94,8 +94,8 @@ main = do
         NixException frames ->
           errorWithoutStackTrace
             .   show
-            =<< renderFrames @(StdValue (StandardT (StdIdT IO)))
-                  @(StdThunk (StandardT (StdIdT IO)))
+            =<< renderFrames @(StdValue (NThunkF _ _) (StandardT (NThunkF _ _) (FreshStableIdT IO)))
+                  @(StdThunk (NThunkF _ _) (StandardT (NThunkF _ _) (FreshStableIdT IO)))
                   frames
 
       when (repl opts) $
@@ -138,7 +138,7 @@ main = do
    where
     printer
       | finder opts
-      = fromValue @(AttrSet (StdValue (StandardT (StdIdT IO)))) >=> findAttrs
+      = fromValue @(AttrSet (StdValue (StandardT (FreshStableIdT IO)))) >=> findAttrs
       | xml opts
       = liftIO
         .   putStrLn
@@ -159,8 +159,8 @@ main = do
       = liftIO . print . prettyNValue <=< removeEffects
      where
       findAttrs
-        :: AttrSet (StdValue (StandardT (StdIdT IO)))
-        -> StandardT (StdIdT IO) ()
+        :: AttrSet (StdValue (StandardT (FreshStableIdT IO)))
+        -> StandardT (FreshStableIdT IO) ()
       findAttrs = go ""
        where
         go prefix s = do
@@ -169,7 +169,7 @@ main = do
             Pure (StdThunk (extract -> Thunk _ _ ref)) -> do
               let path         = prefix ++ Text.unpack k
                   (_, descend) = filterEntry path k
-              val <- readVar @(StandardT (StdIdT IO)) ref
+              val <- readVar @(StandardT (FreshStableIdT IO)) ref
               case val of
                 Computed _ -> pure (k, Nothing)
                 _ | descend   -> (k, ) <$> forceEntry path nv
@@ -211,8 +211,8 @@ main = do
                 .   (k ++)
                 .   (": " ++)
                 .   show
-                =<< renderFrames @(StdValue (StandardT (StdIdT IO)))
-                      @(StdThunk (StandardT (StdIdT IO)))
+                =<< renderFrames @(StdValue (StandardT (FreshStableIdT IO)))
+                      @(StdThunk (StandardT (FreshStableIdT IO)))
                       frames
               pure Nothing
 
