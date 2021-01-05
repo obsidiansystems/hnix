@@ -239,12 +239,7 @@ type StandardTFInner r m = ScopeT (NValue Identity r)
       (StateT (HashMap FilePath NExprLoc, HashMap Text Text) m)))
 
 newtype StandardTF r m a
--- <<<<<<< HEAD
---   = StandardTF (ReaderT (Context r (StdValue r))
---                         (StateT (HashMap FilePath NExprLoc, HashMap Text Text) m) a)
--- =======
   = StandardTF { unStandardTF :: StandardTFInner r m a }
--- >>>>>>> origin/ryantrinkle/stable-id-monadthunk-refactor
   deriving
     ( Applicative
     , Alternative
@@ -255,7 +250,7 @@ newtype StandardTF r m a
     , MonadIO
     , MonadCatch
     , MonadThrow
-    -- , MonadMask
+    , MonadMask
     , MonadReader Context
     , MonadState (HashMap FilePath NExprLoc, HashMap Text Text)
     )

@@ -49,6 +49,7 @@ newtype ThunkT v m a = ThunkT { unThunkT :: FreshStableIdT m a }
 #ifdef MIN_VERSION_haskeline
     , MonadException
 #endif
+    , MonadMask
     )
 
 deriving instance MonadState s m => MonadState s (ThunkT v m)

@@ -40,6 +40,7 @@ newtype FreshStableIdT m a = FreshStableIdT (ReaderT StableId (StateT Int m) a)
 #ifdef MIN_VERSION_haskeline
     , MonadException
 #endif
+    , MonadMask
     )
 
 instance MonadState s m => MonadState s (FreshStableIdT m) where

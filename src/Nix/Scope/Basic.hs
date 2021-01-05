@@ -42,6 +42,7 @@ newtype ScopeT binding m a = ScopeT { unScopeT :: ReaderT (Scopes m binding) m a
     , MonadCatch
     , MonadThrow
     , MonadException
+    , MonadMask
     )
 
 deriving instance MonadState s m => MonadState s (ScopeT binding m)
