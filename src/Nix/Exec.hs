@@ -215,7 +215,7 @@ instance (MonadNix e f m, t ~ Thunk m) => MonadEval (Free (NValue' f m) t) m whe
       pure $ nvStrP
         (Provenance
           scope
-          (NStr_ span (DoubleQuoted [Plain (hackyStringIgnoreContext ns)]))
+          (NStr_ span (DoubleQuoted [Plain (stringIgnoreContext ns)]))
         )
         ns
     Nothing -> nverr $ ErrorCall "Failed to assemble string"
@@ -405,11 +405,11 @@ execBinaryOpForced scope span op lval rval = case op of
   NPlus -> case (lval, rval) of
     (NVConstant _, NVConstant _) -> numBinOp (+)
 
-    (NVStr ls, NVStr rs) -> pure $ nvStrP prov (ls `principledStringMappend` rs)
+    (NVStr ls, NVStr rs) -> pure $ nvStrP prov (ls `mappend` rs)
     (NVStr ls, rs@NVPath{}) ->
-      (\rs2 -> nvStrP prov (ls `principledStringMappend` rs2))
+      (\rs2 -> nvStrP prov (ls `mappend` rs2))
         <$> coerceToString callFunc CopyToStore CoerceStringy rs
-    (NVPath ls, NVStr rs) -> case principledGetStringNoContext rs of
+    (NVPath ls, NVStr rs) -> case getStringNoContext rs of
       Just rs2 -> nvPathP prov <$> makeAbsolutePath @f (ls `mappend` Text.unpack rs2)
       Nothing -> throwError $ ErrorCall $
         -- data/nix/src/libexpr/eval.cc:1412
@@ -417,10 +417,10 @@ execBinaryOpForced scope span op lval rval = case op of
     (NVPath ls, NVPath rs) -> nvPathP prov <$> makeAbsolutePath @f (ls ++ rs)
 
     (ls@NVSet{}, NVStr rs) ->
-      (\ls2 -> nvStrP prov (ls2 `principledStringMappend` rs))
+      (\ls2 -> nvStrP prov (ls2 `mappend` rs))
         <$> coerceToString callFunc DontCopyToStore CoerceStringy ls
     (NVStr ls, rs@NVSet{}) ->
-      (\rs2 -> nvStrP prov (ls `principledStringMappend` rs2))
+      (\rs2 -> nvStrP prov (ls `mappend` rs2))
         <$> coerceToString callFunc DontCopyToStore CoerceStringy rs
     _ -> unsupportedTypes
 
@@ -478,7 +478,7 @@ execBinaryOpForced scope span op lval rval = case op of
 -- This function is here, rather than in 'Nix.String', because of the need to
 -- use 'throwError'.
 fromStringNoContext :: Framed e m => NixString -> m Text
-fromStringNoContext ns = case principledGetStringNoContext ns of
+fromStringNoContext ns = case getStringNoContext ns of
   Just str -> pure str
   Nothing  -> throwError $ ErrorCall $ "expected string with no context, but got " ++ show ns
 

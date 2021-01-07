@@ -92,7 +92,7 @@ x <///> y | isAbsolute y || "." `isPrefixOf` y = x </> y
 defaultFindEnvPath :: MonadNix e f m => String -> m FilePath
 defaultFindEnvPath = findEnvPathM
 
-findEnvPathM :: forall e t f m . MonadNix e f m => FilePath -> m FilePath
+findEnvPathM :: forall e f m . MonadNix e f m => FilePath -> m FilePath
 findEnvPathM name = do
   mres <- lookupVar "__nixPath"
   case mres of
@@ -138,7 +138,7 @@ findPathBy finder ls name = do
         Nothing -> tryPath path Nothing
         Just pf -> demand pf $ fromValueMay >=> \case
           Just (nsPfx :: NixString) ->
-            let pfx = hackyStringIgnoreContext nsPfx
+            let pfx = stringIgnoreContext nsPfx
             in  if not (Text.null pfx)
                   then tryPath path (Just (Text.unpack pfx))
                   else tryPath path Nothing
@@ -175,7 +175,7 @@ fetchTarball = flip demand $ \case
  where
   go :: Maybe (NValue f m) -> NValue f m -> m (NValue f m)
   go msha = \case
-    NVStr ns -> fetch (hackyStringIgnoreContext ns) msha
+    NVStr ns -> fetch (stringIgnoreContext ns) msha
     v ->
       throwError
         $  ErrorCall
@@ -198,7 +198,7 @@ fetchTarball = flip demand $ \case
   fetch uri Nothing =
     nixInstantiateExpr $ "builtins.fetchTarball \"" ++ Text.unpack uri ++ "\""
   fetch url (Just t) = demand t $ fromValue >=> \nsSha ->
-    let sha = hackyStringIgnoreContext nsSha
+    let sha = stringIgnoreContext nsSha
     in  nixInstantiateExpr
           $  "builtins.fetchTarball { "
           ++ "url    = \""
