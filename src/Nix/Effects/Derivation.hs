@@ -5,16 +5,22 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
- 
+{-# LANGUAGE TypeFamilies #-}
+
 
 module Nix.Effects.Derivation ( defaultDerivationStrict ) where
 
 import           Prelude                 hiding ( readFile )
 
+import           Control.Applicative            (Alternative)
 import           Control.Arrow                  ( first, second )
+import           Control.Comonad
 import           Control.Monad                  ( (>=>), forM, when )
+import           Control.Monad.Catch
+import           Control.Monad.Free
+import           Control.Monad.Fix
+import           Control.Monad.Reader.Class
 import           Control.Monad.Writer           ( join, lift )
 import           Control.Monad.State            ( MonadState, gets, modify )
 
@@ -32,14 +38,19 @@ import qualified Data.Text                     as Text
 import qualified Data.Text.Encoding            as Text
 
 import           Nix.Atoms
+import           Nix.Cited
 import           Nix.Convert
 import           Nix.Effects
 import           Nix.Exec                       ( MonadNix , callFunc)
+import           Nix.Expr.Types.Annotated       ( SrcSpan )
 import           Nix.Frames
 import           Nix.Json                       ( nvalueToJSONNixString )
+import           Nix.Options                    ( Options )
 import           Nix.Render
+import           Nix.Scope
 import           Nix.String
 import           Nix.String.Coerce
+import           Nix.Thunk
 import           Nix.Utils               hiding ( readFile )
 import           Nix.Value
 import           Nix.Value.Monad
@@ -102,7 +113,7 @@ writeDerivation (drv@Derivation {inputs, name}) = do
 
 -- | Traverse the graph of inputDrvs to replace fixed output derivations with their fixed output hash.
 -- this avoids propagating changes to their .drv when the output hash stays the same.
-hashDerivationModulo :: (MonadNix e t f m, MonadState (b, MS.HashMap Text Text) m) => Derivation -> m (Store.Digest 'Store.SHA256)
+hashDerivationModulo :: (MonadNix e f m, MonadState (b, MS.HashMap Text Text) m) => Derivation -> m (Store.Digest 'Store.SHA256)
 hashDerivationModulo (Derivation {
     mFixed = Just (Store.SomeDigest (digest :: Store.Digest hashType)),
     outputs,
@@ -226,8 +237,8 @@ derivationParser = do
     _ -> (Nothing, Flat)
 
 
-defaultDerivationStrict :: forall e t f m b. (MonadNix e t f m, MonadState (b, MS.HashMap Text Text) m) => NValue t f m -> m (NValue t f m)
-defaultDerivationStrict = fromValue @(AttrSet (NValue t f m)) >=> \s -> do
+defaultDerivationStrict :: forall e f m b. (MonadNix e f m, MonadState (b, MS.HashMap Text Text) m) => NValue f m -> m (NValue f m)
+defaultDerivationStrict = fromValue @(AttrSet (NValue f m)) >=> \s -> do
     (drv, ctx) <- runWithStringContextT' $ buildDerivationWithContext s
     drvName <- makeStorePathName $ name drv
     let inputs = toStorePaths ctx
@@ -288,27 +299,27 @@ defaultDerivationStrict = fromValue @(AttrSet (NValue t f m)) >=> \s -> do
 -- | Build a derivation in a context collecting string contexts.
 -- This is complex from a typing standpoint, but it allows to perform the
 -- full computation without worrying too much about all the string's contexts.
-buildDerivationWithContext :: forall e t f m. (MonadNix e t f m) => AttrSet (NValue t f m) -> WithStringContextT m Derivation
+buildDerivationWithContext :: forall e f m. (MonadNix e f m) => AttrSet (NValue f m) -> WithStringContextT m Derivation
 buildDerivationWithContext drvAttrs = do
     -- Parse name first, so we can add an informative frame
-    drvName     <- getAttr   "name"                      $ extractNixString >=> assertDrvStoreName
+    drvName     <- getAttr drvAttrs  "name"                      $ extractNixString >=> assertDrvStoreName
     withFrame' Info (ErrorCall $ "While evaluating derivation " ++ show drvName) $ do
 
-      useJson     <- getAttrOr "__structuredAttrs" False   $ return
-      ignoreNulls <- getAttrOr "__ignoreNulls"     False   $ return
+      useJson     <- getAttrOr drvAttrs "__structuredAttrs" False   $ return
+      ignoreNulls <- getAttrOr drvAttrs "__ignoreNulls"     False   $ return
 
-      args        <- getAttrOr "args"              []      $ mapM (fromValue' >=> extractNixString)
-      builder     <- getAttr   "builder"                   $ extractNixString
-      platform    <- getAttr   "system"                    $ extractNoCtx >=> assertNonNull
-      mHash       <- getAttrOr "outputHash"        Nothing $ extractNoCtx >=> (return . Just)
-      hashMode    <- getAttrOr "outputHashMode"    Flat    $ extractNoCtx >=> parseHashMode
-      outputs     <- getAttrOr "outputs"           ["out"] $ mapM (fromValue' >=> extractNoCtx)
+      args        <- getAttrOr drvAttrs "args"              []      $ mapM (fromValue' >=> extractNixString)
+      builder     <- getAttr   drvAttrs "builder"                   $ extractNixString
+      platform    <- getAttr   drvAttrs "system"                    $ extractNoCtx >=> assertNonNull
+      mHash       <- getAttrOr drvAttrs "outputHash"        Nothing $ extractNoCtx >=> (return . Just)
+      hashMode    <- getAttrOr drvAttrs "outputHashMode"    Flat    $ extractNoCtx >=> parseHashMode
+      outputs     <- getAttrOr drvAttrs "outputs"           ["out"] $ mapM (fromValue' >=> extractNoCtx)
 
       mFixedOutput <- case mHash of
         Nothing -> return Nothing
         Just hash -> do
           when (outputs /= ["out"]) $ lift $ throwError $ ErrorCall $ "Multiple outputs are not supported for fixed-output derivations"
-          hashType <- getAttr "outputHashAlgo" $ extractNoCtx
+          hashType <- getAttr drvAttrs "outputHashAlgo" $ extractNoCtx
           digest <- lift $ either (throwError . ErrorCall) return $ Store.mkNamedDigest hashType hash
           return $ Just digest
 
@@ -336,60 +347,94 @@ buildDerivationWithContext drvAttrs = do
         , mFixed = mFixedOutput
         }
   where
-    -- common functions, lifted to WithStringContextT
+    getAttr da n = getAttrOr' da n (throwError $ ErrorCall $ "Required attribute '" ++ show n ++ "' not found.")
 
-    demand' :: NValue t f m -> (NValue t f m -> WithStringContextT m a) -> WithStringContextT m a
-    demand' v f = join $ lift $ demand v (return . f)
+-- common functions, lifted to WithStringContextT
 
-    fromValue' :: (FromValue a m (NValue' t f m (NValue t f m)), MonadNix e t f m) => NValue t f m -> WithStringContextT m a
-    fromValue' = lift . fromValue
+demand' :: (MonadValue (Free (NValue' f m) (Thunk m)) m, Monad m) => NValue f m -> (NValue f m -> WithStringContextT m a) -> WithStringContextT m a
+demand' v f = join $ lift $ demand v (return . f)
 
-    withFrame' :: (Framed e m, Exception s) => NixLevel -> s -> WithStringContextT m a -> WithStringContextT m a
-    withFrame' level f = join . lift . withFrame level f . return
+fromValue' :: (FromValue a m (NValue' f m (NValue f m)), MonadNix e f m) => NValue f m -> WithStringContextT m a
+fromValue' = lift . fromValue
 
-    -- shortcuts to get the (forced) value of an AttrSet field
+withFrame' :: (Framed e m, Exception s) => NixLevel -> s -> WithStringContextT m a -> WithStringContextT m a
+withFrame' level f = join . lift . withFrame level f . return
 
-    getAttrOr' :: forall v a. (MonadNix e t f m, FromValue v m (NValue' t f m (NValue t f m)))
-      => Text -> m a -> (v -> WithStringContextT m a) -> WithStringContextT m a
-    getAttrOr' n d f = case M.lookup n drvAttrs of
-      Nothing -> lift d
-      Just v  -> withFrame' Info (ErrorCall $ "While evaluating attribute '" ++ show n ++ "'") $
-                   fromValue' v >>= f
+-- shortcuts to get the (forced) value of an AttrSet field
 
-    getAttrOr n d f = getAttrOr' n (return d) f
+getAttrOr'
+  :: forall e f m v a.
+     ( MonadNix e f m
+     , FromValue v m (NValue' f m (NValue f m))
+     )
+  => MS.HashMap Text (Free (NValue' f m) (Thunk m))
+  -> Text
+  -> m a
+  -> (v -> WithStringContextT m a)
+  -> WithStringContextT m a
+getAttrOr' drvAttrs n d f = case M.lookup n drvAttrs of
+  Nothing -> lift d
+  Just v  -> withFrame' Info (ErrorCall $ "While evaluating attribute '" ++ show n ++ "'") $
+               fromValue' v >>= f
 
-    getAttr n = getAttrOr' n (throwError $ ErrorCall $ "Required attribute '" ++ show n ++ "' not found.")
+getAttrOr
+  :: ( MonadEffects f m
+     , Alternative m
+     , Control.Monad.Catch.MonadCatch m
+     , Control.Monad.Fix.MonadFix m
+     , Has e Frames
+     , Has e Nix.Options.Options
+     , Has e Nix.Expr.Types.Annotated.SrcSpan
+     , Control.Monad.Reader.Class.MonadReader e m
+     , Scoped m (Free (NValue' f m) (Thunk m)) m
+     , MonadThunk m
+     , Typeable m
+     , Typeable f
+     , Comonad f
+     , Traversable f
+     , HasCitations m (Free (NValue' f m) (Thunk m)) (Thunk m)
+     , HasCitations1 m (Free (NValue' f m) (Thunk m)) f
+     , MonadValue (Free (NValue' f m) (Thunk m)) m
+     , FromValue v m (NValue' f m (Free (NValue' f m) (Thunk m)))
+     , Applicative f
+     , ThunkValue m ~ Free (NValue' f m) (Thunk m))
+  => MS.HashMap Text (Free (NValue' f m) (Thunk m))
+  -> Text
+  -> a
+  -> (v -> WithStringContextT m a)
+  -> WithStringContextT m a
+getAttrOr da n d f = getAttrOr' da n (return d) f
 
-    -- Test validity for fields
+-- Test validity for fields
 
-    assertDrvStoreName :: MonadNix e t f m => Text -> WithStringContextT m Text
-    assertDrvStoreName name = lift $ do
-      let invalid c = not $ isAscii c && (isAlphaNum c || c `elem` ("+-._?=" :: String)) -- isAlphaNum allows non-ascii chars.
-      let failWith reason = throwError $ ErrorCall $ "Store name " ++ show name ++ " " ++ reason
-      when ("." `Text.isPrefixOf` name)    $ failWith "cannot start with a period"
-      when (Text.length name > 211)        $ failWith "must be no longer than 211 characters"
-      when (Text.any invalid name)         $ failWith "contains some invalid character"
-      when (".drv" `Text.isSuffixOf` name) $ failWith "is not allowed to end in '.drv'"
-      return name
+assertDrvStoreName :: MonadNix e f m => Text -> WithStringContextT m Text
+assertDrvStoreName name = lift $ do
+  let invalid c = not $ isAscii c && (isAlphaNum c || c `elem` ("+-._?=" :: String)) -- isAlphaNum allows non-ascii chars.
+  let failWith reason = throwError $ ErrorCall $ "Store name " ++ show name ++ " " ++ reason
+  when ("." `Text.isPrefixOf` name)    $ failWith "cannot start with a period"
+  when (Text.length name > 211)        $ failWith "must be no longer than 211 characters"
+  when (Text.any invalid name)         $ failWith "contains some invalid character"
+  when (".drv" `Text.isSuffixOf` name) $ failWith "is not allowed to end in '.drv'"
+  return name
 
-    extractNoCtx :: MonadNix e t f m => NixString -> WithStringContextT m Text
-    extractNoCtx ns = case principledGetStringNoContext ns of
-      Nothing -> lift $ throwError $ ErrorCall $ "The string " ++ show ns ++ " is not allowed to have a context."
-      Just v -> return v
+extractNoCtx :: MonadNix e f m => NixString -> WithStringContextT m Text
+extractNoCtx ns = case principledGetStringNoContext ns of
+  Nothing -> lift $ throwError $ ErrorCall $ "The string " ++ show ns ++ " is not allowed to have a context."
+  Just v -> return v
 
-    assertNonNull :: MonadNix e t f m => Text -> WithStringContextT m Text
-    assertNonNull t = do
-      when (Text.null t) $ lift $ throwError $ ErrorCall "Value must not be empty"
-      return t
+assertNonNull :: MonadNix e f m => Text -> WithStringContextT m Text
+assertNonNull t = do
+  when (Text.null t) $ lift $ throwError $ ErrorCall "Value must not be empty"
+  return t
 
-    parseHashMode :: MonadNix e t f m => Text -> WithStringContextT m HashMode
-    parseHashMode = \case
-      "flat" ->      return Flat
-      "recursive" -> return Recursive
-      other -> lift $ throwError $ ErrorCall $ "Hash mode " ++ show other ++ " is not valid. It must be either 'flat' or 'recursive'"
+parseHashMode :: MonadNix e f m => Text -> WithStringContextT m HashMode
+parseHashMode = \case
+  "flat" ->      return Flat
+  "recursive" -> return Recursive
+  other -> lift $ throwError $ ErrorCall $ "Hash mode " ++ show other ++ " is not valid. It must be either 'flat' or 'recursive'"
 
-    -- Other helpers
+-- Other helpers
 
-    deleteKeys :: [Text] -> AttrSet a -> AttrSet a
-    deleteKeys keys attrSet = foldl' (flip M.delete) attrSet keys
+deleteKeys :: [Text] -> AttrSet a -> AttrSet a
+deleteKeys keys attrSet = foldl' (flip M.delete) attrSet keys
 
