@@ -31,14 +31,15 @@ module Nix.String
 where
 
 import           Control.Monad.Writer
+import           Data.Foldable
 import           Data.Functor.Identity
 import qualified Data.HashMap.Lazy             as M
 import qualified Data.HashSet                  as S
 import           Data.Hashable
+import           Data.Semigroup
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
 import           GHC.Generics
-
 
 -- * Types
 
@@ -100,9 +101,14 @@ data NixString = NixString
 
 instance Semigroup NixString where
   NixString s1 t1 <> NixString s2 t2 = NixString (s1 <> s2) (t1 <> t2)
+  --NOTE: As of version 1.2.4.0, text does not define sconcat, which means we
+  --need to use its mconcat to get good performance
+  sconcat = mconcat . toList
 
 instance Monoid NixString where
- mempty = NixString mempty mempty
+  mempty = NixString mempty mempty
+  -- Important for performance
+  mconcat strs = NixString (mconcat $ nsContents <$> strs) (mconcat $ nsContext <$> strs)
 
 instance Hashable NixString
 
