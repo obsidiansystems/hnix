@@ -294,8 +294,8 @@ callFunc
   -> m (NValue t f m)
 callFunc fun arg = demand fun $ \fun' -> do
   frames :: Frames <- asks (view hasLens)
-  when (length frames > 2000) $ throwError $ ErrorCall
-    "Function call stack exhausted"
+--  when (length frames > 2000) $ throwError $ ErrorCall
+--    "Function call stack exhausted"
   case fun' of
     NVClosure _params f -> do
       f arg
