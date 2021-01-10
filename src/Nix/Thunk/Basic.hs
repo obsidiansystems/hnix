@@ -9,7 +9,7 @@
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Nix.Thunk.Basic (NThunkF(..), Deferred(..), MonadBasicThunk) where
+module Nix.Thunk.Basic (NThunkF(..), Deferred(..)) where
 
 import           Control.Exception       hiding ( catch )
 import           Control.Monad.Catch
@@ -30,9 +30,7 @@ instance (Eq v, Eq (ThunkId m)) => Eq (NThunkF m v) where
 instance Show v => Show (NThunkF m v) where
   show (Thunk _ _ _) = "<thunk>"
 
-type MonadBasicThunk m = (MonadThunkId m, MonadVar m)
-
-instance (MonadBasicThunk m, MonadCatch m)
+instance (MonadThunkId m, MonadVar m, MonadCatch m)
   => MonadThunk (NThunkF m v) m v where
   thunk = buildThunk
   thunkId (Thunk n _ _) = n
@@ -41,7 +39,7 @@ instance (MonadBasicThunk m, MonadCatch m)
   forceEff = forceEffects
   further  = furtherThunk
 
-buildThunk :: MonadBasicThunk m => m v -> m (NThunkF m v)
+buildThunk :: (MonadThunkId m, MonadVar m) => m v -> m (NThunkF m v)
 buildThunk action = do
   freshThunkId <- freshId
   Thunk freshThunkId <$> newVar False <*> newVar (Deferred action)
