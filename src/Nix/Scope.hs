@@ -20,18 +20,24 @@ import           Nix.Utils
 newtype Scope a = Scope { getScope :: AttrSet a }
     deriving (Functor, Foldable, Traversable, Eq)
 
+instance Semigroup (Scope a) where
+  --NOTE: Left takes precedence
+  Scope a <> Scope b = Scope $ M.union a b
+
+instance Monoid (Scope a) where
+  mempty = Scope mempty
+
 instance Show (Scope a) where
   show (Scope m) = show (M.keys m)
 
 newScope :: AttrSet a -> Scope a
 newScope = Scope
 
-scopeLookup :: VarName -> [Scope a] -> Maybe a
-scopeLookup key = foldr go Nothing
-  where go (Scope m) rest = M.lookup key m <|> rest
+scopeLookup :: VarName -> Scope a -> Maybe a
+scopeLookup key (Scope m) = M.lookup key m
 
 data Scopes m a = Scopes
-    { lexicalScopes :: [Scope a]
+    { lexicalScopes :: Scope a
     , dynamicScopes :: [m (Scope a)]
     }
 
@@ -47,7 +53,7 @@ instance Monoid (Scopes m a) where
   mappend = (<>)
 
 emptyScopes :: forall m a . Scopes m a
-emptyScopes = Scopes [] []
+emptyScopes = Scopes mempty []
 
 class Scoped a m | m -> a where
   currentScopes :: m (Scopes m a)
@@ -64,10 +70,10 @@ clearScopesReader
 clearScopesReader = local (set hasLens (emptyScopes @m @a))
 
 pushScope :: Scoped a m => AttrSet a -> m r -> m r
-pushScope s = pushScopes (Scopes [Scope s] [])
+pushScope s = pushScopes (Scopes (Scope s) [])
 
 pushWeakScope :: (Functor m, Scoped a m) => m (AttrSet a) -> m r -> m r
-pushWeakScope s = pushScopes (Scopes [] [Scope <$> s])
+pushWeakScope s = pushScopes (Scopes mempty [Scope <$> s])
 
 pushScopesReader
   :: (MonadReader e m, Has e (Scopes m a)) => Scopes m a -> m r -> m r
