@@ -18,7 +18,6 @@ import           Control.Monad.Catch
 import           Control.Monad.Free
 import           Control.Monad.IO.Class
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned                  ( unintern )
 import qualified Data.Map                      as Map
 import           Data.List                      ( sortOn )
 import           Data.Maybe                     ( fromJust )

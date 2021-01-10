@@ -22,7 +22,6 @@ import           Data.Char                      ( isAscii, isAlphaNum )
 import qualified Data.HashMap.Lazy             as M
 import qualified Data.HashMap.Strict           as MS
 import qualified Data.HashSet                  as S
-import           Data.Interned
 import           Data.List
 import qualified Data.Map.Strict               as Map
 import           Data.Map.Strict                ( Map )

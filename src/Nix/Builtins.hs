@@ -47,7 +47,6 @@ import           Data.Char                      ( isDigit )
 import           Data.Fix                       ( foldFix )
 import           Data.Foldable                  ( foldrM )
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned
 import           Data.List
 import           Data.Maybe
 import           Data.Scientific
@@ -1308,7 +1307,7 @@ readDir_ p = demand p $ \path' -> do
           | isDirectory s    -> FileTypeDirectory
           | isSymbolicLink s -> FileTypeSymlink
           | otherwise        -> FileTypeUnknown
-    pure (intern @VarName $ Text.pack item, t)
+    pure (intern $ Text.pack item, t)
   getDeeper <$> toValue (M.fromList itemsWithTypes)
 
 fromJSON

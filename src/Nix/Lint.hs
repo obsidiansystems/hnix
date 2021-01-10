@@ -28,7 +28,6 @@ import           Control.Monad.ST
 import           Control.Monad.Trans.Reader
 import           Data.HashMap.Lazy              ( HashMap )
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned
 import           Data.List
 import qualified Data.List.NonEmpty            as NE
 import           Data.Text                      ( Text )

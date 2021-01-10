@@ -44,8 +44,6 @@ import           Data.Fix
 import           Data.Functor.Classes
 import           Data.Hashable
 import           Data.Hashable.Lifted
-import           Data.Interned.Text
-import           Data.Interned
 import           Data.List                      ( inits
                                                 , tails
                                                 )

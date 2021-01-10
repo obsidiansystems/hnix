@@ -16,14 +16,13 @@ import qualified Data.Set                      as Set
 import qualified Data.Text                     as Text
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import           Data.Maybe                     ( mapMaybe )
-import           Data.Interned                  ( unintern )
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Syntax     ( liftString )
 import           Language.Haskell.TH.Quote
 import           Nix.Atoms
 import           Nix.Expr
 import           Nix.Parser
-import           Nix.Utils                      ( VarName )
+import           Nix.Utils                      ( VarName, unintern )
 
 quoteExprExp :: String -> ExpQ
 quoteExprExp s = do

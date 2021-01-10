@@ -64,7 +64,6 @@ import           Data.Fix                       ( Fix(..) )
 import           Data.Functor
 import           Data.HashSet                   ( HashSet )
 import qualified Data.HashSet                  as HashSet
-import           Data.Interned
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.List.NonEmpty            as NE
 import qualified Data.Map                      as Map
@@ -81,7 +80,7 @@ import           GHC.Generics            hiding ( Prefix )
 import           Nix.Expr                hiding ( ($>) )
 import           Nix.Expr.Strings
 import           Nix.Render
-import           Nix.Utils                      ( VarName )
+import           Nix.Utils                      ( VarName, intern )
 import           Prettyprinter                  ( Doc
                                                 , pretty
                                                 )

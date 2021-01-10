@@ -9,6 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE MagicHash #-}
 
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
@@ -29,8 +30,7 @@ import           Data.Fix                       ( Fix(..) )
 import           Data.Hashable                  ( Hashable )
 import           Data.HashMap.Lazy              ( HashMap )
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned.Text
-import           Data.Interned
+import           Data.IORef
 import           Data.List                      ( sortOn )
 import           Data.Monoid                    ( Endo )
 import           Data.Text                      ( Text )
@@ -42,6 +42,10 @@ import           Lens.Family2.Stock             ( _1
                                                 , _2
                                                 )
 import           Lens.Family2.TH                ( makeLensesBy )
+import           System.IO.Unsafe
+import           GHC.Prim
+import           Data.Hashable
+import           Data.String
 
 #if ENABLE_TRACING
 import           Debug.Trace as X
@@ -182,18 +186,56 @@ alterF f k m = f (M.lookup k m) <&> \case
   Nothing -> M.delete k m
   Just v  -> M.insert k v m
 
+data VarName = VarName
+  { _varName_hash :: {-# UNPACK #-} !Int
+  , _varName_ref :: {-# UNPACK #-} !(IORef Text)
+  }
 
-type VarName = InternedText
+instance Hashable VarName where
+  hash = _varName_hash
+  hashWithSalt salt v = hashWithSalt salt $ _varName_hash v
+
+instance Show VarName where
+  showsPrec n = showsPrec n . unintern
+  show = show . unintern
+  showList = showList . fmap unintern
+
+instance Eq VarName where
+  a == b
+    | _varName_ref a == _varName_ref b = True
+    | _varName_hash a /= _varName_hash b = False
+    | otherwise = unsafeDupablePerformIO $ do
+      ta <- readIORef $ _varName_ref a
+      tb <- readIORef $ _varName_ref b
+      case reallyUnsafePtrEquality# ta tb of
+        0# -> if ta == tb
+          then do writeIORef (_varName_ref b) ta
+                  pure True
+          else pure False
+        _ -> pure True
+
+instance Ord VarName where
+  a `compare` b
+    | a == b = EQ -- Fast path; also necessary to opportunistically dedup if possible
+    | otherwise = unintern a `compare` unintern b
+
+instance IsString VarName where
+  fromString = intern . fromString
+
+intern :: Text -> VarName
+intern t = VarName (hash t) $ unsafeDupablePerformIO $ newIORef t
+
+unintern :: VarName -> Text
+unintern a = unsafeDupablePerformIO $ readIORef $ _varName_ref a
 
 instance Read VarName where
   readsPrec i v = (\(t, s) -> (intern t, s)) <$> readsPrec i v
-
 
 internConstr :: Constr
 internConstr = mkConstr internedTextDataType "intern" [] Prefix
 
 internedTextDataType :: DataType
-internedTextDataType = mkDataType "Data.Interned" [internConstr]
+internedTextDataType = mkDataType "Nix.Utils" [internConstr]
 
 instance Data VarName where
   gfoldl f z v = z intern `f` (unintern v)
@@ -203,17 +245,16 @@ instance Data VarName where
     _ -> error "gunfold"
   dataTypeOf _ = internedTextDataType 
   
-instance NFData InternedText where rnf !_ = ()
+instance NFData VarName where rnf !_ = ()
 
-instance Data.Binary.Binary InternedText where 
+instance Data.Binary.Binary VarName where 
   put = Data.Binary.put . unintern
   get = intern <$> Data.Binary.get
 
--- instance Generic InternedText where
+-- instance Generic VarName where
 
-instance Codec.Serialise.Serialise InternedText where
+instance Codec.Serialise.Serialise VarName where
   encode =  Codec.Serialise.encode . unintern
   decode = intern <$>  Codec.Serialise.decode @Text
-
 
 -- derive instance Data VarName

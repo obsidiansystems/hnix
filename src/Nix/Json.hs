@@ -10,7 +10,6 @@ import           Control.Monad.Trans
 import qualified Data.Aeson                    as A
 import qualified Data.Aeson.Encoding           as A
 import qualified Data.HashMap.Lazy             as HM
-import           Data.Interned
 import qualified Data.Text                     as Text
 import qualified Data.Text.Lazy                as TL
 import qualified Data.Text.Lazy.Encoding       as TL

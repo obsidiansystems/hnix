@@ -22,7 +22,6 @@ import           Data.Either                    ( isRight )
 import           Data.Fix                       ( Fix(Fix) )
 import           Data.HashMap.Lazy              ( HashMap )
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned
 import           Data.List                      ( partition )
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import           Data.Maybe                     ( fromMaybe

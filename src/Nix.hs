@@ -33,7 +33,6 @@ import           Control.Arrow                  ( first, second )
 import           Control.Monad.Reader
 import           Data.Fix
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned
 import qualified Data.Text                     as Text
 import qualified Data.Text.Read                as Text
 import           Nix.Builtins

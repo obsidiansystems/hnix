@@ -32,7 +32,6 @@ import           Nix.Value.Monad                (demand)
 import qualified Data.List
 import qualified Data.Maybe
 import qualified Data.HashMap.Lazy
-import           Data.Interned
 import           Data.Text                      (Text)
 import qualified Data.Text
 import qualified Data.Text.IO

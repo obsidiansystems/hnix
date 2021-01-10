@@ -9,10 +9,10 @@ import qualified Data.HashMap.Lazy             as M
 import           Data.List
 import           Data.Ord
 import qualified Data.Text                     as Text
-import           Data.Interned
 import           Nix.Atoms
 import           Nix.Expr.Types
 import           Nix.String
+import           Nix.Utils
 import           Nix.Value
 import           Text.XML.Light
 

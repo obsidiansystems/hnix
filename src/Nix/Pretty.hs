@@ -26,8 +26,6 @@ import qualified Data.HashSet                  as HashSet
 import           Data.List                      ( isPrefixOf
                                                 , sort
                                                 )
-import           Data.Interned                  ( intern, unintern )
-import           Data.Interned.Text
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.List.NonEmpty            as NE
 import           Data.Maybe                     ( isJust
@@ -47,6 +45,7 @@ import           Nix.Normal
 import           Nix.Parser
 import           Nix.String
 import           Nix.Thunk
+import           Nix.Utils
 import           Nix.Value
 import           Prettyprinter
 import           Text.Read                      ( readMaybe )

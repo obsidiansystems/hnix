@@ -33,7 +33,6 @@ import           Control.Monad.Fix
 import           Control.Monad.Reader
 import           Data.Fix
 import qualified Data.HashMap.Lazy             as M
-import           Data.Interned
 import           Data.List
 import qualified Data.List.NonEmpty            as NE
 import           Data.Text                      ( Text )
